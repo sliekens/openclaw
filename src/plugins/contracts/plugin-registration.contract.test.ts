@@ -71,6 +71,7 @@ const pluginRegistrationContractTests: PluginRegistrationContractParams[] = [
   },
   {
     pluginId: "mistral",
+    speechProviderIds: ["mistral"],
     mediaUnderstandingProviderIds: ["mistral"],
   },
   {

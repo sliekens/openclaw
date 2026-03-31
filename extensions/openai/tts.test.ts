@@ -183,5 +183,6 @@ describe("openai tts", () => {
 
       expect(streamed.getReadCount()).toBeLessThan(200);
     });
+
   });
 });

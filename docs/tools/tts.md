@@ -9,13 +9,14 @@ title: "Text-to-Speech"
 
 # Text-to-speech (TTS)
 
-OpenClaw can convert outbound replies into audio using ElevenLabs, Microsoft, or OpenAI.
+OpenClaw can convert outbound replies into audio using ElevenLabs, Microsoft, Mistral, or OpenAI.
 It works anywhere OpenClaw can send audio.
 
 ## Supported services
 
 - **ElevenLabs** (primary or fallback provider)
 - **Microsoft** (primary or fallback provider; current bundled implementation uses `node-edge-tts`)
+- **Mistral** (primary or fallback provider; uses Voxtral TTS and can reuse your Mistral provider auth)
 - **OpenAI** (primary or fallback provider; also used for summaries)
 
 ### Microsoft speech notes
@@ -33,12 +34,17 @@ or ElevenLabs.
 
 ## Optional keys
 
-If you want OpenAI or ElevenLabs:
+If you want ElevenLabs, Mistral, or OpenAI:
 
 - `ELEVENLABS_API_KEY` (or `XI_API_KEY`)
+- `MISTRAL_API_KEY`
 - `OPENAI_API_KEY`
 
 Microsoft speech does **not** require an API key.
+
+If you already ran [`openclaw onboard --auth-choice mistral-api-key`](/providers/mistral),
+OpenClaw can reuse that same Mistral auth for TTS. You do not need to copy the
+key into `messages.tts.providers.mistral.apiKey` unless you want a TTS-specific override.
 
 If multiple providers are configured, the selected provider is used first and the others are fallback options.
 Auto-summary uses the configured `summaryModel` (or `agents.defaults.model.primary`),
@@ -113,6 +119,25 @@ Full schema is in [Gateway configuration](/gateway/configuration).
             useSpeakerBoost: true,
             speed: 1.0,
           },
+        },
+      },
+    },
+  },
+}
+```
+
+### Mistral with shared provider auth
+
+```json5
+{
+  messages: {
+    tts: {
+      auto: "always",
+      provider: "mistral",
+      providers: {
+        mistral: {
+          model: "voxtral-mini-tts-2603",
+          voice: "voice_id",
         },
       },
     },
