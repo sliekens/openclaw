@@ -61,20 +61,13 @@ function findMistralModelProviderConfig(cfg?: OpenClawConfig): Record<string, un
   return undefined;
 }
 
-function hasConfiguredMistralAuthProfile(cfg?: OpenClawConfig): boolean {
+function hasConfiguredMistralAuthProfileMetadata(cfg?: OpenClawConfig): boolean {
   const profiles = asObject(cfg?.auth?.profiles);
-  if (
+  return Boolean(
     profiles &&
     Object.values(profiles).some(
       (profile) => normalizeProviderId(asObject(profile)?.provider) === "mistral",
-    )
-  ) {
-    return true;
-  }
-
-  const order = asObject(cfg?.auth?.order);
-  return Object.keys(order ?? {}).some(
-    (providerId) => normalizeProviderId(providerId) === "mistral",
+    ),
   );
 }
 
@@ -206,8 +199,7 @@ async function resolveMistralApiKey(params: {
   cfg: OpenClawConfig;
   providerConfig: MistralTtsProviderConfig;
 }): Promise<string> {
-  const configuredApiKey =
-    params.providerConfig.apiKey ?? trimToUndefined(process.env.MISTRAL_API_KEY);
+  const configuredApiKey = params.providerConfig.apiKey;
   if (configuredApiKey) {
     return configuredApiKey;
   }
@@ -255,6 +247,8 @@ async function mistralTTS(params: {
       throw new Error(`Mistral TTS API error (${response.status})${detail ? `: ${detail}` : ""}`);
     }
 
+    // Voxtral returns synthesized audio inside a JSON envelope instead of
+    // streaming raw audio bytes directly like the OpenAI TTS endpoint.
     const payload = (await response.json()) as Record<string, unknown>;
     const audioData = trimToUndefined(payload.audio_data);
     if (!audioData) {
@@ -280,7 +274,7 @@ export function buildMistralSpeechProvider(): SpeechProviderPlugin {
         Boolean(config.apiKey) ||
         Boolean(trimToUndefined(process.env.MISTRAL_API_KEY)) ||
         hasConfiguredSecret(findMistralModelProviderConfig(cfg)?.apiKey) ||
-        hasConfiguredMistralAuthProfile(cfg)
+        hasConfiguredMistralAuthProfileMetadata(cfg)
       );
     },
     synthesize: async (req) => {
