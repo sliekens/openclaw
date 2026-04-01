@@ -287,6 +287,46 @@ describe("mistral speech provider", () => {
     );
   });
 
+  it("synthesizes telephony audio as raw PCM at 24 kHz", async () => {
+    const audio = Buffer.from("fake-pcm-audio");
+    vi.spyOn(providerAuthRuntime, "resolveApiKeyForProvider").mockResolvedValue({
+      apiKey: "resolved-profile-key",
+      source: "profile:mistral:default",
+      mode: "api-key",
+      profileId: "mistral:default",
+    });
+    const fetchMock = vi.fn(async (_url, init) => {
+      const body = JSON.parse(String(init?.body));
+      expect(body.response_format).toBe("pcm");
+      return new Response(JSON.stringify({ audio_data: audio.toString("base64") }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const result = await provider.synthesizeTelephony!({
+      text: "hello",
+      cfg: {
+        auth: {
+          profiles: {
+            "mistral:default": { provider: "mistral", mode: "api_key" },
+          },
+        },
+      } as never,
+      providerConfig: {
+        baseUrl: "https://api.mistral.ai/v1",
+        model: "voxtral-mini-tts-2603",
+        voice: "",
+      },
+      timeoutMs: 5000,
+    });
+
+    expect(result.audioBuffer.equals(audio)).toBe(true);
+    expect(result.outputFormat).toBe("pcm");
+    expect(result.sampleRate).toBe(24_000);
+  });
+
   it("throws when no Mistral API key can be resolved", async () => {
     vi.spyOn(providerAuthRuntime, "resolveApiKeyForProvider").mockResolvedValue({
       source: "env: MISTRAL_API_KEY",

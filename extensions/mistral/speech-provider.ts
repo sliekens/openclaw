@@ -314,6 +314,24 @@ export function buildMistralSpeechProvider(): SpeechProviderPlugin {
         hasConfiguredMistralAuthProfileMetadata(cfg)
       );
     },
+    synthesizeTelephony: async (req) => {
+      const config = readMistralProviderConfig(req.providerConfig, req.cfg);
+      const apiKey = await resolveMistralApiKey({
+        cfg: req.cfg,
+        providerConfig: config,
+      });
+      const audioBuffer = await mistralTTS({
+        text: req.text,
+        apiKey,
+        baseUrl: config.baseUrl,
+        model: config.model,
+        voice: config.voice,
+        speed: config.speed,
+        responseFormat: "pcm",
+        timeoutMs: req.timeoutMs,
+      });
+      return { audioBuffer, outputFormat: "pcm", sampleRate: 24_000 };
+    },
     synthesize: async (req) => {
       const config = readMistralProviderConfig(req.providerConfig, req.cfg);
       const overrides = readMistralOverrides(req.providerOverrides);
