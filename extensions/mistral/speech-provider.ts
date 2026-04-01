@@ -127,7 +127,6 @@ function parseDirectiveToken(ctx: SpeechDirectiveTokenParseContext): {
   warnings?: string[];
 } {
   switch (ctx.key) {
-    case "voice":
     case "voice_id":
     case "mistralvoice":
     case "mistralvoiceid":
@@ -140,7 +139,6 @@ function parseDirectiveToken(ctx: SpeechDirectiveTokenParseContext): {
         return { handled: true, warnings: [`invalid Mistral voice "${ctx.value}"`] };
       }
       return { handled: true, overrides: { voice: ctx.value.trim() } };
-    case "model":
     case "mistralmodel":
     case "mistralmodelid":
     case "mistral_model":

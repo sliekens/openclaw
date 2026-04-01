@@ -1,5 +1,9 @@
 import * as providerAuthRuntime from "openclaw/plugin-sdk/provider-auth-runtime";
-import { parseTtsDirectives, type SpeechSynthesisRequest } from "openclaw/plugin-sdk/speech";
+import {
+  parseTtsDirectives,
+  type SpeechProviderPlugin,
+  type SpeechSynthesisRequest,
+} from "openclaw/plugin-sdk/speech";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildMistralSpeechProvider } from "./speech-provider.js";
 
@@ -170,6 +174,38 @@ describe("mistral speech provider", () => {
       model: "voxtral-live-tts",
     });
     expect(result.warnings).toEqual([]);
+  });
+
+  it("does not swallow bare model directives meant for a later provider", () => {
+    const laterProvider: SpeechProviderPlugin = {
+      id: "elevenlabs",
+      label: "ElevenLabs",
+      autoSelectOrder: 20,
+      isConfigured: () => true,
+      parseDirectiveToken: ({ key, value }) =>
+        key === "model" ? { handled: true, overrides: { modelId: value } } : { handled: false },
+      synthesize: async () => ({
+        audioBuffer: Buffer.from("audio"),
+        outputFormat: "mp3",
+        fileExtension: ".mp3",
+        voiceCompatible: false,
+      }),
+    };
+
+    const result = parseTtsDirectives(
+      "Hello [[tts:provider=elevenlabs model=eleven_v3]] world",
+      {
+        ...modelOverridePolicy,
+        allowProvider: true,
+      },
+      { providers: [provider, laterProvider] },
+    );
+
+    expect(result.overrides.provider).toBe("elevenlabs");
+    expect(result.overrides.providerOverrides?.mistral).toBeUndefined();
+    expect(result.overrides.providerOverrides?.elevenlabs).toEqual({
+      modelId: "eleven_v3",
+    });
   });
 
   it("prefers provider auth resolution over the raw env fallback", async () => {
