@@ -129,6 +129,8 @@ function parseDirectiveToken(ctx: SpeechDirectiveTokenParseContext): {
   switch (ctx.key) {
     case "voice":
     case "voice_id":
+    case "mistralvoice":
+    case "mistralvoiceid":
     case "mistral_voice":
     case "mistral_voice_id":
       if (!ctx.policy.allowVoice) {
@@ -139,6 +141,8 @@ function parseDirectiveToken(ctx: SpeechDirectiveTokenParseContext): {
       }
       return { handled: true, overrides: { voice: ctx.value.trim() } };
     case "model":
+    case "mistralmodel":
+    case "mistralmodelid":
     case "mistral_model":
       if (!ctx.policy.allowModelId) {
         return { handled: true };
@@ -268,6 +272,41 @@ export function buildMistralSpeechProvider(): SpeechProviderPlugin {
     models: [DEFAULT_MISTRAL_TTS_MODEL],
     resolveConfig: ({ cfg, rawConfig }) => normalizeMistralProviderConfig(rawConfig, cfg),
     parseDirectiveToken,
+    resolveTalkConfig: ({ cfg, baseTtsConfig, talkProviderConfig }) => {
+      const base = normalizeMistralProviderConfig(baseTtsConfig, cfg);
+      return {
+        ...base,
+        ...(talkProviderConfig.apiKey === undefined
+          ? {}
+          : {
+              apiKey: normalizeResolvedSecretInputString({
+                value: talkProviderConfig.apiKey,
+                path: "talk.providers.mistral.apiKey",
+              }),
+            }),
+        ...(trimToUndefined(talkProviderConfig.baseUrl) == null
+          ? {}
+          : { baseUrl: normalizeMistralTtsBaseUrl(trimToUndefined(talkProviderConfig.baseUrl)) }),
+        ...(trimToUndefined(talkProviderConfig.modelId) == null
+          ? {}
+          : { model: trimToUndefined(talkProviderConfig.modelId) }),
+        ...(trimToUndefined(talkProviderConfig.voiceId) == null
+          ? {}
+          : { voice: trimToUndefined(talkProviderConfig.voiceId) }),
+        ...(asNumber(talkProviderConfig.speed) == null
+          ? {}
+          : { speed: asNumber(talkProviderConfig.speed) }),
+      };
+    },
+    resolveTalkOverrides: ({ params }) => ({
+      ...(trimToUndefined(params.voiceId) == null
+        ? {}
+        : { voice: trimToUndefined(params.voiceId) }),
+      ...(trimToUndefined(params.modelId) == null
+        ? {}
+        : { model: trimToUndefined(params.modelId) }),
+      ...(asNumber(params.speed) == null ? {} : { speed: asNumber(params.speed) }),
+    }),
     isConfigured: ({ cfg, providerConfig }) => {
       const config = readMistralProviderConfig(providerConfig, cfg);
       return (
