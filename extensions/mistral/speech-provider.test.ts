@@ -1,5 +1,5 @@
 import * as providerAuthRuntime from "openclaw/plugin-sdk/provider-auth-runtime";
-import type { SpeechSynthesisRequest } from "openclaw/plugin-sdk/speech";
+import { parseTtsDirectives, type SpeechSynthesisRequest } from "openclaw/plugin-sdk/speech";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildMistralSpeechProvider } from "./speech-provider.js";
 
@@ -32,6 +32,17 @@ describe("mistral speech provider", () => {
       ...overrides,
     };
   }
+
+  const modelOverridePolicy = {
+    enabled: true,
+    allowText: false,
+    allowProvider: false,
+    allowVoice: true,
+    allowModelId: true,
+    allowVoiceSettings: false,
+    allowNormalization: false,
+    allowSeed: false,
+  } as const;
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
@@ -94,6 +105,71 @@ describe("mistral speech provider", () => {
       baseUrl: "https://custom.mistral.example/v1",
       model: "voxtral-mini-tts-2603",
     });
+  });
+
+  it("maps Talk config modelId and voiceId onto the Mistral TTS config shape", () => {
+    const talkConfig = provider.resolveTalkConfig?.({
+      cfg: {
+        models: {
+          providers: {
+            mistral: {
+              baseUrl: "https://base.mistral.example/v1",
+            },
+          },
+        },
+      } as never,
+      baseTtsConfig: {},
+      talkProviderConfig: {
+        apiKey: "talk-mistral-key",
+        baseUrl: "https://talk.mistral.example/v1",
+        modelId: "voxtral-custom-tts",
+        voiceId: "voice_123",
+        speed: 1.1,
+      },
+      timeoutMs: 5000,
+    });
+
+    expect(talkConfig).toMatchObject({
+      apiKey: "talk-mistral-key",
+      baseUrl: "https://talk.mistral.example/v1",
+      model: "voxtral-custom-tts",
+      voice: "voice_123",
+      speed: 1.1,
+    });
+  });
+
+  it("maps Talk request overrides onto Mistral speech overrides", () => {
+    const talkOverrides = provider.resolveTalkOverrides?.({
+      talkProviderConfig: {},
+      params: {
+        modelId: "voxtral-live-tts",
+        voiceId: "voice_override",
+        speed: 1.25,
+      },
+    });
+
+    expect(talkOverrides).toEqual({
+      model: "voxtral-live-tts",
+      voice: "voice_override",
+      speed: 1.25,
+    });
+  });
+
+  it("accepts provider-specific camelCase directive aliases for Mistral", () => {
+    const result = parseTtsDirectives(
+      "Hello [[tts:mistralVoiceId=voice_abc mistralModelId=voxtral-live-tts]] world",
+      modelOverridePolicy,
+      { providers: [provider] },
+    );
+    const mistralOverrides = result.overrides.providerOverrides?.mistral as
+      | { voice?: string; model?: string }
+      | undefined;
+
+    expect(mistralOverrides).toEqual({
+      voice: "voice_abc",
+      model: "voxtral-live-tts",
+    });
+    expect(result.warnings).toEqual([]);
   });
 
   it("prefers provider auth resolution over the raw env fallback", async () => {
