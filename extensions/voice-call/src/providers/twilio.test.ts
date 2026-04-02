@@ -312,6 +312,7 @@ describe("TwilioProvider", () => {
 
       provider.setMediaStreamHandler(mediaStreamHandler as never);
       provider.setTTSProvider({
+        synthesisTimeoutMs: 50,
         synthesizeForTelephony: async () => await new Promise<Buffer>(() => {}),
       });
 
@@ -322,7 +323,7 @@ describe("TwilioProvider", () => {
           text: "Timeout me",
         }),
       ).rejects.toThrow("Telephony TTS synthesis timed out");
-      await vi.advanceTimersByTimeAsync(8_100);
+      await vi.advanceTimersByTimeAsync(60);
       await playExpectation;
       expect(sendAudio).toHaveBeenCalled();
       expect(sendMark).not.toHaveBeenCalled();
@@ -350,6 +351,7 @@ describe("TwilioProvider", () => {
 
     provider.setMediaStreamHandler(mediaStreamHandler as never);
     provider.setTTSProvider({
+      synthesisTimeoutMs: 30_000,
       synthesizeForTelephony: async () => Buffer.alloc(320),
     });
 

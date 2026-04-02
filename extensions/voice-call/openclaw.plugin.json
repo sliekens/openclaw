@@ -86,13 +86,26 @@
       "label": "Enable Streaming",
       "advanced": true
     },
+    "streaming.sttProvider": {
+      "label": "Realtime STT Provider",
+      "advanced": true
+    },
     "streaming.openaiApiKey": {
       "label": "OpenAI Realtime API Key",
       "sensitive": true,
       "advanced": true
     },
     "streaming.sttModel": {
-      "label": "Realtime STT Model",
+      "label": "OpenAI Realtime STT Model",
+      "advanced": true
+    },
+    "streaming.mistralApiKey": {
+      "label": "Mistral Realtime API Key",
+      "sensitive": true,
+      "advanced": true
+    },
+    "streaming.mistralSttModel": {
+      "label": "Mistral Realtime STT Model",
       "advanced": true
     },
     "streaming.streamPath": {
@@ -347,12 +360,18 @@
           },
           "sttProvider": {
             "type": "string",
-            "enum": ["openai-realtime"]
+            "enum": ["openai-realtime", "mistral-realtime"]
           },
           "openaiApiKey": {
             "type": "string"
           },
           "sttModel": {
+            "type": "string"
+          },
+          "mistralApiKey": {
+            "type": "string"
+          },
+          "mistralSttModel": {
             "type": "string"
           },
           "silenceDurationMs": {

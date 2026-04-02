@@ -58587,6 +58587,35 @@
       "hasChildren": false
     },
     {
+      "path": "plugins.entries.voice-call.config.streaming.mistralApiKey",
+      "kind": "plugin",
+      "type": "string",
+      "required": false,
+      "deprecated": false,
+      "sensitive": true,
+      "tags": [
+        "advanced",
+        "auth",
+        "security"
+      ],
+      "label": "Mistral Realtime API Key",
+      "hasChildren": false
+    },
+    {
+      "path": "plugins.entries.voice-call.config.streaming.mistralSttModel",
+      "kind": "plugin",
+      "type": "string",
+      "required": false,
+      "deprecated": false,
+      "sensitive": false,
+      "tags": [
+        "advanced",
+        "media"
+      ],
+      "label": "Mistral Realtime STT Model",
+      "hasChildren": false
+    },
+    {
       "path": "plugins.entries.voice-call.config.streaming.openaiApiKey",
       "kind": "plugin",
       "type": "string",
@@ -58646,7 +58675,7 @@
         "advanced",
         "media"
       ],
-      "label": "Realtime STT Model",
+      "label": "OpenAI Realtime STT Model",
       "hasChildren": false
     },
     {
@@ -58655,11 +58684,16 @@
       "type": "string",
       "required": false,
       "enumValues": [
-        "openai-realtime"
+        "openai-realtime",
+        "mistral-realtime"
       ],
       "deprecated": false,
       "sensitive": false,
-      "tags": [],
+      "tags": [
+        "advanced",
+        "media"
+      ],
+      "label": "Realtime STT Provider",
       "hasChildren": false
     },
     {

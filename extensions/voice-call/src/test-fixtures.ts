@@ -32,6 +32,7 @@ export function createVoiceCallBaseConfig(params?: {
       enabled: false,
       sttProvider: "openai-realtime",
       sttModel: "gpt-4o-transcribe",
+      mistralSttModel: "voxtral-mini-transcribe-realtime-2602",
       silenceDurationMs: 800,
       vadThreshold: 0.5,
       streamPath: "/voice/stream",

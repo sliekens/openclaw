@@ -204,11 +204,15 @@ export const VoiceCallStreamingConfigSchema = z
     /** Enable real-time audio streaming (requires WebSocket support) */
     enabled: z.boolean().default(false),
     /** STT provider for real-time transcription */
-    sttProvider: z.enum(["openai-realtime"]).default("openai-realtime"),
+    sttProvider: z.enum(["openai-realtime", "mistral-realtime"]).default("openai-realtime"),
     /** OpenAI API key for Realtime API (uses OPENAI_API_KEY env if not set) */
     openaiApiKey: z.string().min(1).optional(),
     /** OpenAI transcription model (default: gpt-4o-transcribe) */
     sttModel: z.string().min(1).default("gpt-4o-transcribe"),
+    /** Mistral API key for Realtime Transcription API (uses MISTRAL_API_KEY env if not set) */
+    mistralApiKey: z.string().min(1).optional(),
+    /** Mistral transcription model (default: voxtral-mini-transcribe-realtime-2602) */
+    mistralSttModel: z.string().min(1).default("voxtral-mini-transcribe-realtime-2602"),
     /** VAD silence duration in ms before considering speech ended */
     silenceDurationMs: z.number().int().positive().default(800),
     /** VAD threshold 0-1 (higher = less sensitive) */
@@ -232,6 +236,7 @@ export const VoiceCallStreamingConfigSchema = z
     enabled: false,
     sttProvider: "openai-realtime",
     sttModel: "gpt-4o-transcribe",
+    mistralSttModel: "voxtral-mini-transcribe-realtime-2602",
     silenceDurationMs: 800,
     vadThreshold: 0.5,
     streamPath: "/voice/stream",

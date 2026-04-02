@@ -112,6 +112,33 @@ export function chunkAudio(audio: Buffer, chunkSize = 160): Generator<Buffer, vo
   })();
 }
 
+/**
+ * Decode a single G.711 mu-law byte to 16-bit signed linear PCM.
+ */
+export function mulawToLinear(mulaw: number): number {
+  // mu-law is transmitted inverted
+  mulaw = ~mulaw & 0xff;
+  const sign = mulaw & 0x80;
+  const exponent = (mulaw >> 4) & 0x07;
+  const mantissa = mulaw & 0x0f;
+  let sample = ((mantissa << 3) + 132) << exponent;
+  sample -= 132;
+  return sign ? -sample : sample;
+}
+
+/**
+ * Convert a buffer of G.711 mu-law bytes to 16-bit signed PCM (little-endian).
+ * Input: mu-law 8kHz mono (1 byte per sample)
+ * Output: PCM S16LE 8kHz mono (2 bytes per sample)
+ */
+export function mulawToPcm(mulaw: Buffer): Buffer {
+  const pcm = Buffer.alloc(mulaw.length * 2);
+  for (let i = 0; i < mulaw.length; i++) {
+    pcm.writeInt16LE(mulawToLinear(mulaw[i]!), i * 2);
+  }
+  return pcm;
+}
+
 function linearToMulaw(sample: number): number {
   const BIAS = 132;
   const CLIP = 32635;

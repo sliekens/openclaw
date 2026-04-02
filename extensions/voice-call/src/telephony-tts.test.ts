@@ -62,6 +62,37 @@ afterEach(() => {
 });
 
 describe("createTelephonyTtsProvider deepMerge hardening", () => {
+  it("exposes the resolved telephony TTS timeout", () => {
+    const provider = createTelephonyTtsProvider({
+      coreConfig: createCoreConfig(),
+      runtime: {
+        textToSpeechTelephony: async () => ({
+          success: true,
+          audioBuffer: Buffer.alloc(2),
+          sampleRate: 8000,
+        }),
+      },
+    });
+
+    expect(provider.synthesisTimeoutMs).toBe(30_000);
+  });
+
+  it("exposes the merged telephony TTS timeout override", () => {
+    const provider = createTelephonyTtsProvider({
+      coreConfig: createCoreConfig(),
+      ttsOverride: { timeoutMs: 60_000 },
+      runtime: {
+        textToSpeechTelephony: async () => ({
+          success: true,
+          audioBuffer: Buffer.alloc(2),
+          sampleRate: 8000,
+        }),
+      },
+    });
+
+    expect(provider.synthesisTimeoutMs).toBe(60_000);
+  });
+
   it("merges safe nested overrides", async () => {
     const tts = await mergeOverride({
       providers: { openai: { voice: "coral" } },

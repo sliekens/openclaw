@@ -47,9 +47,16 @@ export interface RealtimeSTTSession {
 }
 
 /**
+ * Common interface for realtime STT providers.
+ */
+export interface RealtimeSTTProvider {
+  createSession(): RealtimeSTTSession;
+}
+
+/**
  * Provider factory for OpenAI Realtime STT sessions.
  */
-export class OpenAIRealtimeSTTProvider {
+export class OpenAIRealtimeSTTProvider implements RealtimeSTTProvider {
   readonly name = "openai-realtime";
   private apiKey: string;
   private model: string;

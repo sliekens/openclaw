@@ -7,12 +7,7 @@ import type {
   SpeechProviderOverrides,
   SpeechProviderPlugin,
 } from "openclaw/plugin-sdk/speech";
-import {
-  asObject,
-  readResponseTextLimited,
-  trimToUndefined,
-  truncateErrorDetail,
-} from "openclaw/plugin-sdk/speech";
+import { asObject, trimToUndefined, truncateErrorDetail } from "openclaw/plugin-sdk/speech";
 import { MISTRAL_BASE_URL } from "./model-definitions.js";
 
 const DEFAULT_MISTRAL_TTS_MODEL = "voxtral-mini-tts-2603";
@@ -292,18 +287,6 @@ function formatMistralErrorPayload(payload: unknown): string | undefined {
   return undefined;
 }
 
-async function extractMistralErrorDetail(response: Response): Promise<string | undefined> {
-  const rawBody = trimToUndefined(await readResponseTextLimited(response));
-  if (!rawBody) {
-    return undefined;
-  }
-  try {
-    return formatMistralErrorPayload(JSON.parse(rawBody)) ?? truncateErrorDetail(rawBody);
-  } catch {
-    return truncateErrorDetail(rawBody);
-  }
-}
-
 async function resolveMistralApiKey(params: {
   cfg: OpenClawConfig;
   providerConfig: MistralTtsProviderConfig;
@@ -319,7 +302,7 @@ async function resolveMistralApiKey(params: {
   return requireApiKey(auth, "mistral");
 }
 
-async function mistralTTS(params: {
+async function mistralTTSAttempt(params: {
   text: string;
   apiKey: string;
   baseUrl: string;
@@ -328,7 +311,7 @@ async function mistralTTS(params: {
   speed?: number;
   responseFormat: "mp3" | "opus" | "pcm" | "wav";
   timeoutMs: number;
-}): Promise<Buffer> {
+}): Promise<{ ok: true; buffer: Buffer } | { ok: false; status: number; error: string }> {
   const { text, apiKey, baseUrl, model, voice, speed, responseFormat, timeoutMs } = params;
 
   const controller = new AbortController();
@@ -352,8 +335,24 @@ async function mistralTTS(params: {
     });
 
     if (!response.ok) {
-      const detail = await extractMistralErrorDetail(response);
-      throw new Error(`Mistral TTS API error (${response.status})${detail ? `: ${detail}` : ""}`);
+      const rawBody = await response.text().catch(() => "");
+      const headers: Record<string, string> = {};
+      response.headers.forEach((value, key) => {
+        headers[key] = value;
+      });
+      console.warn(
+        `[MistralTTS] HTTP ${response.status} response headers:`,
+        JSON.stringify(headers),
+      );
+      console.warn(`[MistralTTS] HTTP ${response.status} response body:`, rawBody || "(empty)");
+      let detail: string | undefined;
+      try {
+        detail = formatMistralErrorPayload(JSON.parse(rawBody)) ?? truncateErrorDetail(rawBody);
+      } catch {
+        detail = truncateErrorDetail(rawBody);
+      }
+      const error = `Mistral TTS API error (${response.status})${detail ? `: ${detail}` : ""}`;
+      return { ok: false, status: response.status, error };
     }
 
     // Voxtral returns synthesized audio inside a JSON envelope instead of
@@ -363,10 +362,53 @@ async function mistralTTS(params: {
     if (!audioData) {
       throw new Error("Mistral TTS response missing audio_data");
     }
-    return decodeBase64Audio(audioData);
+    return { ok: true, buffer: decodeBase64Audio(audioData) };
   } finally {
     clearTimeout(timeout);
   }
+}
+
+const MISTRAL_TTS_MAX_RETRIES = 2;
+const MISTRAL_TTS_RETRY_DELAY_MS = 500;
+
+async function mistralTTS(params: {
+  text: string;
+  apiKey: string;
+  baseUrl: string;
+  model: string;
+  voice: string;
+  speed?: number;
+  responseFormat: "mp3" | "opus" | "pcm" | "wav";
+  timeoutMs: number;
+}): Promise<Buffer> {
+  const totalAttempts = MISTRAL_TTS_MAX_RETRIES + 1;
+  let lastError = "";
+  for (let attempt = 0; attempt < totalAttempts; attempt++) {
+    if (attempt > 0) {
+      const delayMs = MISTRAL_TTS_RETRY_DELAY_MS * attempt;
+      console.log(
+        `[MistralTTS] retrying (attempt ${attempt + 1}/${totalAttempts}) after ${delayMs}ms`,
+      );
+      await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+    }
+    const result = await mistralTTSAttempt(params);
+    if (result.ok) {
+      if (attempt > 0) {
+        console.log(`[MistralTTS] succeeded on attempt ${attempt + 1}/${totalAttempts}`);
+      }
+      return result.buffer;
+    }
+    lastError = result.error;
+    const isTransient = result.status >= 500;
+    const willRetry = isTransient && attempt + 1 < totalAttempts;
+    console.warn(
+      `[MistralTTS] attempt ${attempt + 1}/${totalAttempts} failed (HTTP ${result.status}): ${result.error}${willRetry ? " — will retry" : " — giving up"}`,
+    );
+    if (!isTransient) {
+      break;
+    }
+  }
+  throw new Error(lastError);
 }
 
 export function buildMistralSpeechProvider(): SpeechProviderPlugin {

@@ -107,6 +107,25 @@ Set config under `plugins.entries.voice-call.config`:
 
           streaming: {
             enabled: true,
+
+            // STT provider for real-time transcription (default: "openai-realtime")
+            // "openai-realtime"  — OpenAI Realtime API (server-side VAD)
+            // "mistral-realtime" — Mistral Realtime Transcription API (client-side silence detection)
+            sttProvider: "openai-realtime",
+
+            // OpenAI Realtime STT options (used when sttProvider: "openai-realtime")
+            // openaiApiKey: "...",   // falls back to OPENAI_API_KEY env
+            sttModel: "gpt-4o-transcribe",
+            vadThreshold: 0.5, // VAD sensitivity 0–1 (OpenAI only)
+
+            // Mistral Realtime STT options (used when sttProvider: "mistral-realtime")
+            // mistralApiKey: "...",  // falls back to MISTRAL_API_KEY env
+            mistralSttModel: "voxtral-mini-transcribe-realtime-2602",
+
+            // Silence duration in ms before treating audio as end-of-utterance
+            // For OpenAI: passed to server-side VAD. For Mistral: client-side timer.
+            silenceDurationMs: 800,
+
             streamPath: "/voice/stream",
             preStartTimeoutMs: 5000,
             maxPendingConnections: 32,
@@ -130,6 +149,10 @@ Notes:
 - If you use ngrok free tier, set `publicUrl` to the exact ngrok URL; signature verification is always enforced.
 - `tunnel.allowNgrokFreeTierLoopbackBypass: true` allows Twilio webhooks with invalid signatures **only** when `tunnel.provider="ngrok"` and `serve.bind` is loopback (ngrok local agent). Use for local dev only.
 - Ngrok free tier URLs can change or add interstitial behavior; if `publicUrl` drifts, Twilio signatures will fail. For production, prefer a stable domain or Tailscale funnel.
+- **Reverse proxy and streaming:** the media stream path (`streaming.streamPath`, default `/voice/stream`) uses **WebSocket**, not HTTP. Your reverse proxy must forward WebSocket upgrades on that path separately from the webhook path. If this is misconfigured, Twilio receives a non-101 response and drops the call immediately. The gateway logs `426 Upgrade Required` and a warning when it detects this. See [Reverse proxy configuration](#reverse-proxy-configuration) below.
+- STT providers for real-time streaming:
+  - `openai-realtime` (default): uses OpenAI Realtime API with server-side VAD for turn detection. Requires `OPENAI_API_KEY` or `streaming.openaiApiKey`. Model defaults to `gpt-4o-transcribe`.
+  - `mistral-realtime`: uses Mistral Realtime Transcription API (`voxtral-mini-transcribe-realtime-2602`). Requires `MISTRAL_API_KEY` or `streaming.mistralApiKey`. Turn detection uses a client-side silence timer (`silenceDurationMs`); there is no server VAD. Twilio mu-law audio is converted to PCM S16LE before sending.
 - Streaming security defaults:
   - `streaming.preStartTimeoutMs` closes sockets that never send a valid `start` frame.
   - `streaming.maxPendingConnections` caps total unauthenticated pre-start sockets.
@@ -208,6 +231,66 @@ Example with a stable public host:
   },
 }
 ```
+
+## Reverse proxy configuration
+
+When a reverse proxy sits between Twilio and the Gateway, it must forward **both** paths:
+
+| Path                                             | Protocol             | Purpose                      |
+| ------------------------------------------------ | -------------------- | ---------------------------- |
+| `serve.path` (default `/voice/webhook`)          | HTTP POST            | Twilio call control webhooks |
+| `streaming.streamPath` (default `/voice/stream`) | WebSocket (`wss://`) | Real-time audio media stream |
+
+Most proxies need explicit WebSocket upgrade support for the stream path. Without it, Twilio receives a non-101 HTTP response and hangs up the call immediately.
+
+### nginx
+
+```nginx
+location /voice/webhook {
+    proxy_pass http://127.0.0.1:3334;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+
+location /voice/stream {
+    proxy_pass http://127.0.0.1:3334;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+    proxy_read_timeout 3600s;
+}
+```
+
+### Caddy
+
+```caddy
+handle /voice/webhook {
+    reverse_proxy 127.0.0.1:3334
+}
+
+handle /voice/stream {
+    reverse_proxy 127.0.0.1:3334 {
+        transport http {
+            versions h1
+        }
+    }
+}
+```
+
+Caddy handles WebSocket upgrades automatically when `versions h1` is set.
+
+### Tailscale Funnel / ngrok
+
+Both Tailscale Funnel and ngrok proxy WebSocket connections transparently without additional configuration. Use `tunnel.provider: "tailscale-funnel"` or `tunnel.provider: "ngrok"` to let the plugin manage the tunnel automatically.
+
+### Diagnosing stream proxy issues
+
+- Gateway logs `426 Upgrade Required` on the stream path → proxy is not forwarding WebSocket upgrades.
+- Gateway never logs `[MediaStream] Twilio connected` → the stream WebSocket is not reaching the Gateway at all.
+- Call connects then ends within 1–2 seconds → Twilio could not establish the media stream WebSocket.
 
 ## TTS for calls
 

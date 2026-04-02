@@ -16,6 +16,8 @@ import type { CallManager } from "./manager.js";
 import type { MediaStreamConfig } from "./media-stream.js";
 import { MediaStreamHandler } from "./media-stream.js";
 import type { VoiceCallProvider } from "./providers/base.js";
+import { MistralRealtimeSTTProvider } from "./providers/stt-mistral-realtime.js";
+import type { RealtimeSTTProvider } from "./providers/stt-openai-realtime.js";
 import { OpenAIRealtimeSTTProvider } from "./providers/stt-openai-realtime.js";
 import type { TwilioProvider } from "./providers/twilio.js";
 import type { CallRecord, NormalizedEvent, WebhookContext } from "./types.js";
@@ -146,24 +148,47 @@ export class VoiceCallWebhookServer {
     return initialMessage.length > 0;
   }
 
-  /**
-   * Initialize media streaming with OpenAI Realtime STT.
-   */
-  private initializeMediaStreaming(): void {
-    const streaming = this.config.streaming;
-    const apiKey = streaming.openaiApiKey ?? process.env.OPENAI_API_KEY;
-
-    if (!apiKey) {
-      console.warn("[voice-call] Streaming enabled but no OpenAI API key found");
-      return;
+  private buildSttProvider(
+    streaming: (typeof this.config)["streaming"],
+  ): RealtimeSTTProvider | null {
+    if (streaming.sttProvider === "mistral-realtime") {
+      const apiKey = streaming.mistralApiKey ?? process.env.MISTRAL_API_KEY;
+      if (!apiKey) {
+        console.warn(
+          "[voice-call] Streaming enabled with mistral-realtime but no Mistral API key found",
+        );
+        return null;
+      }
+      return new MistralRealtimeSTTProvider({
+        apiKey,
+        model: streaming.mistralSttModel,
+        silenceDurationMs: streaming.silenceDurationMs,
+      });
     }
 
-    const sttProvider = new OpenAIRealtimeSTTProvider({
+    // openai-realtime (default)
+    const apiKey = streaming.openaiApiKey ?? process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      console.warn("[voice-call] Streaming enabled but no OpenAI API key found");
+      return null;
+    }
+    return new OpenAIRealtimeSTTProvider({
       apiKey,
       model: streaming.sttModel,
       silenceDurationMs: streaming.silenceDurationMs,
       vadThreshold: streaming.vadThreshold,
     });
+  }
+
+  /**
+   * Initialize media streaming with the configured STT provider.
+   */
+  private initializeMediaStreaming(): void {
+    const streaming = this.config.streaming;
+    const sttProvider = this.buildSttProvider(streaming);
+    if (!sttProvider) {
+      return;
+    }
 
     const streamConfig: MediaStreamConfig = {
       sttProvider,
@@ -452,6 +477,23 @@ export class VoiceCallWebhookServer {
     }
 
     if (!this.isWebhookPathMatch(url.pathname, webhookPath)) {
+      const streamPath = this.config.streaming.streamPath;
+      if (
+        this.config.streaming.enabled &&
+        streamPath &&
+        this.isWebhookPathMatch(url.pathname, streamPath)
+      ) {
+        // Plain HTTP request hit the media stream WebSocket path.
+        // This almost always means the reverse proxy is not forwarding the
+        // WebSocket upgrade (Upgrade: websocket / Connection: Upgrade headers).
+        // Configure your proxy to pass WebSocket connections through for this path.
+        console.warn(
+          `[voice-call] Plain HTTP request received on media stream path (${url.pathname}). ` +
+            `Reverse proxy must forward WebSocket upgrades to this path. ` +
+            `See voice-call plugin docs for proxy configuration.`,
+        );
+        return { statusCode: 426, body: "Upgrade Required: WebSocket expected on this path" };
+      }
       return { statusCode: 404, body: "Not Found" };
     }
 
