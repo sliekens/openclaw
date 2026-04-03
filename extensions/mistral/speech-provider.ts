@@ -142,7 +142,6 @@ function parseDirectiveToken(ctx: SpeechDirectiveTokenParseContext): {
   warnings?: string[];
 } {
   switch (ctx.key) {
-    case "voice_id":
     case "mistralvoice":
     case "mistralvoiceid":
     case "mistral_voice":
