@@ -181,6 +181,11 @@ type WavChunkInfo = {
   audioFormat: number;
 };
 
+function getRiffChunkSpan(chunkSize: number): number {
+  // RIFF chunks are word-aligned, so odd-length payloads include a 1-byte pad.
+  return 8 + chunkSize + (chunkSize % 2);
+}
+
 function parseWavChunk(buffer: Buffer): WavChunkInfo {
   if (buffer.length < 44) {
     throw new Error("Mistral TTS WAV response too short");
@@ -198,7 +203,7 @@ function parseWavChunk(buffer: Buffer): WavChunkInfo {
   const bitsPerSample = buffer.readUInt16LE(34);
 
   // Scan for the data chunk (there may be additional chunks between fmt and data)
-  let offset = 12 + 4 + 4 + fmtSize;
+  let offset = 12 + getRiffChunkSpan(fmtSize);
   while (offset + 8 <= buffer.length) {
     const chunkId = buffer.toString("ascii", offset, offset + 4);
     const chunkSize = buffer.readUInt32LE(offset + 4);
@@ -206,7 +211,7 @@ function parseWavChunk(buffer: Buffer): WavChunkInfo {
       const audioData = buffer.subarray(offset + 8, offset + 8 + chunkSize);
       return { audioData, sampleRate, numChannels, bitsPerSample, audioFormat };
     }
-    offset += 8 + chunkSize;
+    offset += getRiffChunkSpan(chunkSize);
   }
   throw new Error("Mistral TTS WAV response missing data chunk");
 }
