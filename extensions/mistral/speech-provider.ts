@@ -71,6 +71,21 @@ function hasConfiguredMistralAuthProfileMetadata(cfg?: OpenClawConfig): boolean 
   );
 }
 
+function hasConfiguredMistralAuthOrder(cfg?: OpenClawConfig): boolean {
+  const order = asObject(cfg?.auth?.order);
+  if (!order) {
+    return false;
+  }
+  // auth.order keys are provider IDs; check if any key normalizes to "mistral"
+  // and has at least one profile ID entry, matching what resolveAuthProfileOrder does.
+  return Object.entries(order).some(([providerId, profileIds]) => {
+    if (normalizeProviderId(providerId) !== "mistral") {
+      return false;
+    }
+    return Array.isArray(profileIds) && profileIds.length > 0;
+  });
+}
+
 function normalizeMistralProviderConfig(
   rawConfig: Record<string, unknown>,
   cfg?: OpenClawConfig,
@@ -311,7 +326,8 @@ export function buildMistralSpeechProvider(): SpeechProviderPlugin {
         Boolean(config.apiKey) ||
         Boolean(trimToUndefined(process.env.MISTRAL_API_KEY)) ||
         hasConfiguredSecret(findMistralModelProviderConfig(cfg)?.apiKey) ||
-        hasConfiguredMistralAuthProfileMetadata(cfg)
+        hasConfiguredMistralAuthProfileMetadata(cfg) ||
+        hasConfiguredMistralAuthOrder(cfg)
       );
     },
     synthesizeTelephony: async (req) => {
