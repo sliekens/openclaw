@@ -74,13 +74,29 @@ describe("mistral speech provider", () => {
     ).toBe(true);
   });
 
-  it("does not treat auth.order alone as TTS-ready", () => {
+  it("treats auth.order with a Mistral profile list as TTS-ready", () => {
     expect(
       provider.isConfigured({
         cfg: {
           auth: {
             order: {
               mistral: ["mistral:default"],
+            },
+          },
+        } as never,
+        providerConfig: {},
+        timeoutMs: 5000,
+      }),
+    ).toBe(true);
+  });
+
+  it("does not treat an empty auth.order Mistral list as TTS-ready", () => {
+    expect(
+      provider.isConfigured({
+        cfg: {
+          auth: {
+            order: {
+              mistral: [],
             },
           },
         } as never,
