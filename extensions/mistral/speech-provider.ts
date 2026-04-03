@@ -173,6 +173,94 @@ function decodeBase64Audio(value: string): Buffer {
   return Buffer.from(value, "base64");
 }
 
+type WavChunkInfo = {
+  audioData: Buffer;
+  sampleRate: number;
+  numChannels: number;
+  bitsPerSample: number;
+  /** 1 = PCM integer, 3 = IEEE float */
+  audioFormat: number;
+};
+
+function parseWavChunk(buffer: Buffer): WavChunkInfo {
+  if (buffer.length < 44) {
+    throw new Error("Mistral TTS WAV response too short");
+  }
+  if (buffer.toString("ascii", 0, 4) !== "RIFF" || buffer.toString("ascii", 8, 12) !== "WAVE") {
+    throw new Error("Mistral TTS WAV response is not a valid RIFF/WAVE file");
+  }
+  if (buffer.toString("ascii", 12, 16) !== "fmt ") {
+    throw new Error("Mistral TTS WAV response missing fmt chunk");
+  }
+  const fmtSize = buffer.readUInt32LE(16);
+  const audioFormat = buffer.readUInt16LE(20);
+  const numChannels = buffer.readUInt16LE(22);
+  const sampleRate = buffer.readUInt32LE(24);
+  const bitsPerSample = buffer.readUInt16LE(34);
+
+  // Scan for the data chunk (there may be additional chunks between fmt and data)
+  let offset = 12 + 4 + 4 + fmtSize;
+  while (offset + 8 <= buffer.length) {
+    const chunkId = buffer.toString("ascii", offset, offset + 4);
+    const chunkSize = buffer.readUInt32LE(offset + 4);
+    if (chunkId === "data") {
+      const audioData = buffer.subarray(offset + 8, offset + 8 + chunkSize);
+      return { audioData, sampleRate, numChannels, bitsPerSample, audioFormat };
+    }
+    offset += 8 + chunkSize;
+  }
+  throw new Error("Mistral TTS WAV response missing data chunk");
+}
+
+/**
+ * Decode a Mistral WAV response to mono s16le PCM.
+ * Handles f32le (audioFormat=3) and s16le (audioFormat=1) WAV sources.
+ * Returns the raw s16le buffer and the sample rate from the WAV header.
+ */
+export function decodeMistralWavToS16le(buffer: Buffer): {
+  audioBuffer: Buffer;
+  sampleRate: number;
+} {
+  const { audioData, sampleRate, numChannels, bitsPerSample, audioFormat } = parseWavChunk(buffer);
+
+  if (audioFormat === 3 && bitsPerSample === 32) {
+    // f32le → s16le (mix to mono if needed)
+    const samplesPerFrame = numChannels;
+    const frames = Math.floor(audioData.length / (4 * samplesPerFrame));
+    const output = Buffer.alloc(frames * 2);
+    for (let i = 0; i < frames; i++) {
+      let sum = 0;
+      for (let ch = 0; ch < samplesPerFrame; ch++) {
+        sum += audioData.readFloatLE((i * samplesPerFrame + ch) * 4);
+      }
+      const sample = Math.round((sum / samplesPerFrame) * 32767);
+      output.writeInt16LE(Math.max(-32768, Math.min(32767, sample)), i * 2);
+    }
+    return { audioBuffer: output, sampleRate };
+  }
+
+  if (audioFormat === 1 && bitsPerSample === 16) {
+    // Already s16le — mix to mono if needed
+    if (numChannels === 1) {
+      return { audioBuffer: audioData, sampleRate };
+    }
+    const frames = Math.floor(audioData.length / (2 * numChannels));
+    const output = Buffer.alloc(frames * 2);
+    for (let i = 0; i < frames; i++) {
+      let sum = 0;
+      for (let ch = 0; ch < numChannels; ch++) {
+        sum += audioData.readInt16LE((i * numChannels + ch) * 2);
+      }
+      output.writeInt16LE(Math.round(sum / numChannels), i * 2);
+    }
+    return { audioBuffer: output, sampleRate };
+  }
+
+  throw new Error(
+    `Mistral TTS WAV: unsupported format (audioFormat=${audioFormat}, bitsPerSample=${bitsPerSample})`,
+  );
+}
+
 function formatMistralErrorPayload(payload: unknown): string | undefined {
   const root = asObject(payload);
   const subject = asObject(root?.error) ?? root;
@@ -234,7 +322,7 @@ async function mistralTTS(params: {
   model: string;
   voice: string;
   speed?: number;
-  responseFormat: "mp3" | "opus" | "pcm";
+  responseFormat: "mp3" | "opus" | "pcm" | "wav";
   timeoutMs: number;
 }): Promise<Buffer> {
   const { text, apiKey, baseUrl, model, voice, speed, responseFormat, timeoutMs } = params;
@@ -336,17 +424,20 @@ export function buildMistralSpeechProvider(): SpeechProviderPlugin {
         cfg: req.cfg,
         providerConfig: config,
       });
-      const audioBuffer = await mistralTTS({
+      // Use WAV so the header carries the actual sample rate and bit depth;
+      // Mistral TTS PCM is f32le which resamplePcmTo8k cannot consume directly.
+      const wavBuffer = await mistralTTS({
         text: req.text,
         apiKey,
         baseUrl: config.baseUrl,
         model: config.model,
         voice: config.voice,
         speed: config.speed,
-        responseFormat: "pcm",
+        responseFormat: "wav",
         timeoutMs: req.timeoutMs,
       });
-      return { audioBuffer, outputFormat: "pcm", sampleRate: 24_000 };
+      const { audioBuffer, sampleRate } = decodeMistralWavToS16le(wavBuffer);
+      return { audioBuffer, outputFormat: "pcm", sampleRate };
     },
     synthesize: async (req) => {
       const config = readMistralProviderConfig(req.providerConfig, req.cfg);
