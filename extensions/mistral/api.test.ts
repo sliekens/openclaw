@@ -108,6 +108,22 @@ describe("applyMistralModelCompat", () => {
     expect(applyMistralModelCompat(model)).toBe(model);
   });
 
+  it("contributes Mistral compat for native, provider-family, and hinted custom routes", () => {
+    const registerProvider = (mistralPlugin as { register?: (api: unknown) => void }).register;
+    let contributeResolvedModelCompat:
+      | ((params: { modelId: string; model: Record<string, unknown> }) => unknown)
+      | undefined;
+
+    registerProvider?.({
+      registerProvider: (provider: {
+        contributeResolvedModelCompat?: typeof contributeResolvedModelCompat;
+      }) => {
+        contributeResolvedModelCompat = provider.contributeResolvedModelCompat;
+      },
+      registerSpeechProvider: () => {},
+      registerMediaUnderstandingProvider: () => {},
+    });
+
   it("contributes Mistral transport compat for native, provider-family, and hinted custom routes", () => {
     expect(
       contributeMistralResolvedModelCompat({
