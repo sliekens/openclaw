@@ -3,7 +3,7 @@ import { applyMistralModelCompat } from "./api.js";
 import { mistralMediaUnderstandingProvider } from "./media-understanding-provider.js";
 import { applyMistralConfig, MISTRAL_DEFAULT_MODEL_REF } from "./onboard.js";
 import { buildMistralProvider } from "./provider-catalog.js";
-import { contributeMistralResolvedModelCompat } from "./provider-compat.js";
+import { buildMistralRealtimeTranscriptionProvider } from "./realtime-transcription-provider.js";
 import { buildMistralSpeechProvider } from "./speech-provider.js";
 
 const PROVIDER_ID = "mistral";
@@ -50,6 +50,7 @@ export default defineSingleProviderPluginEntry({
   },
   register(api) {
     api.registerSpeechProvider(buildMistralSpeechProvider());
+    api.registerRealtimeTranscriptionProvider(buildMistralRealtimeTranscriptionProvider());
     api.registerMediaUnderstandingProvider(mistralMediaUnderstandingProvider);
   },
 });

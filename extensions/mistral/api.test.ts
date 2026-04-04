@@ -121,6 +121,7 @@ describe("applyMistralModelCompat", () => {
         contributeResolvedModelCompat = provider.contributeResolvedModelCompat;
       },
       registerSpeechProvider: () => {},
+      registerRealtimeTranscriptionProvider: () => {},
       registerMediaUnderstandingProvider: () => {},
     });
 
